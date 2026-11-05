@@ -8,7 +8,7 @@ Go 1.26.0 이상, Spine `v0.7.0-preview.2`, `nats.go v1.55.0`을 사용합니다
 go get github.com/NARUBROWN/spine-nats-platform@preview
 ```
 
-CLI의 `--event-platform nats` 생성에는 함께 준비한 Spine CLI 패치가 필요합니다. 해당 패치가 적용된 CLI를 사용하거나 아래처럼 factory를 직접 연결하세요. CLI는 플랫폼 목록을 자동으로 발견하지 않으며 지원 목록에 등록된 모듈의 `@preview` 버전을 조회합니다.
+CLI의 `--event-platform nats` 생성에는 동적 플랫폼 조회 패치가 적용된 CLI가 필요합니다. 해당 CLI는 저장소 이름 규칙으로 이 모듈의 `@preview`를 조회하고 루트 `spine-platform.json`에서 설정과 생성자, 최소 Go 버전을 읽습니다. CLI를 사용하지 않는 앱은 아래처럼 factory를 직접 연결하세요.
 
 ## 앱에 연결하기
 
@@ -100,6 +100,8 @@ SPINE_TEST_NATS_URL=nats://127.0.0.1:4222 go -C e2e test -race ./... -count=1
 
 E2E는 HTTP 요청, 도메인 이벤트 발행, worker 실패, 재전달, 결과 이벤트와 정상 종료를 검사합니다. 단일 로컬 서버 검증이며 클러스터 장애 복구, 실제 운영 인증서와 계정, 처리량과 대용량 성능 검증은 포함하지 않습니다.
 
-CI의 `generated-project` 작업은 고정한 CLI 커밋으로 `spine new --event-platform events:nats`를 실행합니다. 이 저장소의 소스를 별도 모듈 프록시와 캐시에 넣으며, 생성한 `go.mod`에 `replace`를 추가하지 않습니다. 두 레이아웃에서 HTTP 앱과 worker 네 조합의 정적 계약, 부분 runtime probe, 실제 NATS 전달, ACK와 잘못된 DTO의 reject, 정상 종료 및 소스를 보존하는 update를 검사합니다. 이 경로는 현재 checkout 검증이며 공개 모듈 설치 증거는 아닙니다.
+CI의 `generated-project` 작업은 고정한 CLI 커밋으로 `spine new --event-platform events:nats`를 실행합니다. 이 저장소의 소스를 별도 모듈 프록시와 캐시에 넣으며, 생성한 `go.mod`에 `replace`를 추가하지 않습니다. 두 레이아웃에서 HTTP 앱과 worker 네 조합의 정적 계약, 부분 runtime probe, 실제 NATS 전달, ACK와 잘못된 DTO의 reject, 정상 종료 및 소스를 보존하는 update를 검사합니다.
+
+CLI에 등록하지 않은 다른 이벤트 이름과 설정형 validator를 메타데이터로 연결한 네 조합도 검사합니다. 다른 생성자와 설정 구조체, 간접 validator 의존성까지 포함하며 총 여덟 조합의 누락이나 skip을 실패로 처리합니다. 이 경로는 현재 checkout 검증이며 공개 모듈 설치 증거는 아닙니다.
 
 전달 보장과 pull consumer 배경은 [NATS JetStream 문서](https://docs.nats.io/learn/jetstream/)와 [공식 Go client](https://github.com/nats-io/nats.go/tree/v1.55.0/jetstream)를 참고하세요.
