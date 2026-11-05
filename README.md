@@ -4,6 +4,8 @@ Spine의 `spine.event-adapter/v1` 계약으로 NATS JetStream 이벤트를 발�
 
 Go 1.26.0 이상, Spine `v0.7.0-preview.2`, `nats.go v1.55.0`을 사용합니다. 실제 서버 검증 버전은 NATS `2.12.1`입니다.
 
+첫 출시 후보는 [`v0.1.0-preview.1`](release/notes/v0.1.0-preview.1.md)입니다. 태그 발행 전에는 `@preview`를 사용합니다.
+
 ```sh
 go get github.com/NARUBROWN/spine-nats-platform@preview
 ```

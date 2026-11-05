@@ -78,7 +78,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: NARUBROWN/spine-cli
-          ref: af1bb3775ed3b51987247863ef6d0bab6345eb55
+          ref: db6cd4d9b60dbb5fe254401b01eaf6e7443c984e
           path: cli
           persist-credentials: false
       - uses: actions/setup-go@v5
