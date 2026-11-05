@@ -1,0 +1,77 @@
+name: Public Module Check
+on:
+  workflow_call:
+    inputs:
+      source_sha:
+        type: string
+        required: true
+      query:
+        type: string
+        required: true
+      artifact:
+        type: string
+        required: true
+      scope:
+        type: string
+        required: true
+permissions:
+  contents: read
+  actions: read
+jobs:
+  public:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: control
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          path: candidate
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-plan
+          path: control
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.0'
+      - name: Start JetStream
+        run: |
+          docker run -d --name spine-nats -p 127.0.0.1:4222:4222 nats:2.12.1-alpine -js
+          mkdir -p "$RUNNER_TEMP/nats-tls"
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=localhost \
+            -addext subjectAltName=DNS:localhost,IP:127.0.0.1 \
+            -keyout "$RUNNER_TEMP/nats-tls/server.key" -out "$RUNNER_TEMP/nats-tls/server.crt" 2>/dev/null
+          docker run -d --name spine-nats-tls -p 127.0.0.1:4223:4222 \
+            -v "$RUNNER_TEMP/nats-tls:/certs:ro" nats:2.12.1-alpine -js \
+            --tls --tlscert /certs/server.crt --tlskey /certs/server.key \
+            --user spine-test --pass local-only-nats
+      - name: Wait for JetStream
+        run: |
+          for attempt in $(seq 1 30); do
+            if docker logs spine-nats 2>&1 | grep -q 'Server is ready' && \
+               docker logs spine-nats-tls 2>&1 | grep -q 'Server is ready'; then exit 0; fi
+            sleep 1
+          done
+          docker logs spine-nats
+          exit 1
+      - name: Verify published modules with an isolated cache
+        working-directory: control
+        env:
+          RELEASE_QUERY: ${{ inputs.query }}
+          RELEASE_SCOPE: ${{ inputs.scope }}
+          SPINE_TEST_NATS_URL: nats://127.0.0.1:4222
+          SPINE_TEST_NATS_TLS_URL: tls://127.0.0.1:4223
+          SPINE_TEST_NATS_TLS_CA: ${{ runner.temp }}/nats-tls/server.crt
+          SPINE_TEST_NATS_USER: spine-test
+          SPINE_TEST_NATS_PASSWORD: local-only-nats
+        run: python3 scripts/release/verify_public.py --plan release-plan.json --source ../candidate --query "$RELEASE_QUERY" --scope "$RELEASE_SCOPE" --output release-validation.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact }}
+          path: control/release-validation.json
+          if-no-files-found: error

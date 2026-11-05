@@ -1,2 +1,9 @@
 /bin/
 /docs/work/
+/spine-core/
+__pycache__/
+/release-plan.json
+/release-manifest.json
+/release-validation.json
+/live-*.jsonl
+/generated-project.jsonl

@@ -6,6 +6,8 @@ Go 1.26.0 이상, Spine `v0.7.0-preview.2`, `nats.go v1.55.0`을 사용합니다
 
 첫 출시 후보는 [`v0.1.0-preview.1`](release/notes/v0.1.0-preview.1.md)입니다. 태그 발행 전에는 `@preview`를 사용합니다.
 
+대상 정식 버전은 `v0.1.0`입니다. `preview → rc → main` 승격과 발행 조건은 [배포 절차](docs/releasing.md), 초기 도입은 [전환 안내](docs/migration/v0.1.0.md)를 따릅니다.
+
 ```sh
 go get github.com/NARUBROWN/spine-nats-platform@preview
 ```

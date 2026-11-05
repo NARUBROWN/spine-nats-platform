@@ -1,38 +1,152 @@
 name: CI
-on: [push, pull_request]
+on:
+  push:
+    branches: [preview, rc, main]
+  pull_request:
+    branches: [preview, rc, main]
+    types: [opened, reopened, synchronize, edited, ready_for_review]
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        required: true
+      public_dependencies:
+        type: boolean
+        default: false
+    outputs:
+      verified_sha:
+        value: ${{ jobs.verified.outputs.sha }}
 permissions:
   contents: read
+env:
+  GOWORK: 'off'
+  PYTHONUTF8: '1'
 jobs:
-  unit:
+  direction:
+    name: ${{ github.event_name == 'pull_request' && format('Branch Flow / {0}', github.base_ref) || 'Branch Direction' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+      - run: node scripts/release/branch_flow.cjs
+  policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.0'
+      - run: python3 scripts/release/release.py validate-policy
+      - run: python3 -m unittest discover -s test/release -p 'test_*.py' -v
+      - run: node --test scripts/release/branch_flow.test.cjs
+      - run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+      - run: actionlint -shellcheck= -pyflakes=
+  unit:
+    needs: direction
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache-dependency-path: '**/go.sum'
-      - name: Formatting, vet and module boundary
+      - name: Read source core pin
+        if: ${{ !inputs.public_dependencies }}
+        id: core
+        shell: bash
+        run: python3 -c "import json,os; p=json.load(open('.github/release-policy.json')); open(os.environ['GITHUB_OUTPUT'],'a').write('sha='+p['ci_core']+'\n')"
+      - uses: actions/checkout@v4
+        if: ${{ !inputs.public_dependencies }}
+        with:
+          repository: NARUBROWN/spine
+          ref: ${{ steps.core.outputs.sha }}
+          path: spine-core
+          persist-credentials: false
+      - name: Prepare source workspace
+        if: ${{ !inputs.public_dependencies }}
+        shell: bash
+        run: python3 scripts/release/ci_workspace.py prepare --root . --output "$RUNNER_TEMP/contracts.work"
+      - name: Check exact source and channel
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ inputs.ref || github.sha }}
+          CHANNEL_REF: ${{ github.base_ref || github.ref_name }}
         run: |
-          test -z "$(gofmt -l .)"
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          channel=$(python3 -c "import sys,os; sys.path.insert(0,'scripts/release'); from ci_workspace import channel_for; print(channel_for(os.environ['CHANNEL_REF']))")
+          python3 scripts/release/release.py check-module --channel "$channel"
+      - name: Formatting, vet and module boundary
+        shell: bash
+        env:
+          PUBLIC_DEPENDENCIES: ${{ inputs.public_dependencies }}
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then test -z "$(gofmt -l .)"; fi
           bash scripts/check-module-boundary.sh
           for module in . e2e examples/worker; do
             go -C "$module" vet ./...
-            go -C "$module" mod verify
-            go -C "$module" mod tidy
+            if [ "$PUBLIC_DEPENDENCIES" = true ]; then
+              go -C "$module" mod verify
+              go -C "$module" mod tidy
+            fi
           done
           git diff --exit-code -- go.mod go.sum e2e/go.mod e2e/go.sum examples/worker/go.mod examples/worker/go.sum
-      - name: Unit and race tests
+      - name: Unit tests
         run: |
-          go test -race ./... -count=1 -timeout=2m
+          go test ./... -count=1 -shuffle=on -timeout=2m
           go -C examples/worker test ./...
+      - name: Race detector
+        if: runner.os == 'Linux'
+        run: go test -race ./... -count=1 -shuffle=on -timeout=2m
   live:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache-dependency-path: '**/go.sum'
+      - name: Read source core pin
+        if: ${{ !inputs.public_dependencies }}
+        id: core
+        shell: bash
+        run: python3 -c "import json,os; p=json.load(open('.github/release-policy.json')); open(os.environ['GITHUB_OUTPUT'],'a').write('sha='+p['ci_core']+'\n')"
+      - uses: actions/checkout@v4
+        if: ${{ !inputs.public_dependencies }}
+        with:
+          repository: NARUBROWN/spine
+          ref: ${{ steps.core.outputs.sha }}
+          path: spine-core
+          persist-credentials: false
+      - name: Prepare source workspace
+        if: ${{ !inputs.public_dependencies }}
+        shell: bash
+        run: python3 scripts/release/ci_workspace.py prepare --root . --output "$RUNNER_TEMP/contracts.work"
+      - name: Check exact source and channel
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ inputs.ref || github.sha }}
+          CHANNEL_REF: ${{ github.base_ref || github.ref_name }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          channel=$(python3 -c "import sys,os; sys.path.insert(0,'scripts/release'); from ci_workspace import channel_for; print(channel_for(os.environ['CHANNEL_REF']))")
+          python3 scripts/release/release.py check-module --channel "$channel"
       - name: Start JetStream
         run: |
           docker run -d --name spine-nats -p 127.0.0.1:4222:4222 nats:2.12.1-alpine -js
@@ -61,8 +175,14 @@ jobs:
           SPINE_TEST_NATS_USER: spine-test
           SPINE_TEST_NATS_PASSWORD: local-only-nats
         run: |
-          go test -race ./... -count=1 -timeout=2m
-          go -C e2e test -race ./... -count=1 -timeout=2m
+          go test -race -json ./... -count=1 -timeout=2m > live-root.jsonl
+          go -C e2e test -race -json ./... -count=1 -timeout=2m > live-application.jsonl
+          python3 scripts/check-live-e2e.py live-root.jsonl live-application.jsonl
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: live-evidence
+          path: live-*.jsonl
       - name: Server logs
         if: failure()
         run: |
@@ -75,10 +195,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: platform
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
       - uses: actions/checkout@v4
         with:
           repository: NARUBROWN/spine-cli
-          ref: db6cd4d9b60dbb5fe254401b01eaf6e7443c984e
+          ref: 6cac1948c1a72b3c1bafbd93735040d73bd31454
           path: cli
           persist-credentials: false
       - uses: actions/setup-go@v5
@@ -94,6 +216,15 @@ jobs:
           done
           docker logs generated-nats
           exit 1
+      - name: Select exact channel core for Preview CLI tests
+        working-directory: platform
+        env:
+          CHANNEL_REF: ${{ github.base_ref || github.ref_name }}
+          PUBLIC_DEPENDENCIES: ${{ inputs.public_dependencies }}
+        run: |
+          args=()
+          if [ "$PUBLIC_DEPENDENCIES" = true ]; then args+=(--public); fi
+          python3 scripts/release/generated_core_proxy.py --ref "$CHANNEL_REF" --output "$RUNNER_TEMP/generated-core" "${args[@]}"
       - name: Generate and exercise HTTP and worker applications
         env:
           GOWORK: 'off'
@@ -107,3 +238,23 @@ jobs:
         with:
           name: generated-project-evidence
           path: generated-project.jsonl
+  verified:
+    name: ${{ github.event_name == 'pull_request' && format('Verified Source / {0}', github.base_ref) || 'Verified Source' }}
+    runs-on: ubuntu-latest
+    if: ${{ always() }}
+    needs: [direction, policy, unit, live, generated-project]
+    outputs:
+      sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - id: source
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+          SOURCE_SHA: ${{ inputs.ref || github.sha }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          if any(job['result'] != 'success' for job in json.loads(os.environ['RESULTS']).values()):
+              raise SystemExit('필수 검사가 모두 성공해야 합니다')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write('sha=' + os.environ['SOURCE_SHA'] + '\n')
+          PY
