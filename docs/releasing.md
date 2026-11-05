@@ -46,3 +46,17 @@ python3 scripts/release/configure_branches.py
 ```
 
 기존 채널 브랜치를 이동하지 않습니다. 세 브랜치의 삭제와 force push를 막고, 채널별 `Branch Flow`와 `Verified Source`를 필수로 요구합니다. `v*` 태그의 수정과 삭제도 막습니다. `release-preview`, `release-rc`, `release-stable`은 해당 브랜치에서만 실행하며 정식 발행은 `NARUBROWN`의 승인을 요구합니다.
+
+## Discord 태그 알림
+
+태그 생성에 성공하면 바로 [Spine 공통 Discord Action](https://github.com/NARUBROWN/spine/tree/b55c182f4d0722fca5aaf3b963bca20cf0dcc4d4/.github/actions/discord-tag)을 호출합니다. 알림 제목에 저장소 이름과 태그를 표시하고 태그 페이지와 발행 실행 기록으로 연결합니다. 이 알림은 태그 생성 시점의 기록이며 공개 설치 검증과 Release 게시 완료를 보장하지 않습니다.
+
+| 태그 형식 | GitHub Actions repository secret |
+| --- | --- |
+| `vX.Y.Z-preview.N` | `DISCORD_WEBHOOK_PREVIEW` |
+| `vX.Y.Z-rc.N` | `DISCORD_WEBHOOK_RC` |
+| `vX.Y.Z` | `DISCORD_WEBHOOK_RELEASE` |
+
+각 Discord 채널의 webhook URL을 이 저장소의 **Settings → Secrets and variables → Actions**에 위 이름으로 등록합니다. URL은 코드나 로그에 넣지 않습니다. 공통 Action은 전체 커밋 SHA로 고정하며 호출 workflow는 위 세 secret만 전달합니다.
+
+`GITHUB_TOKEN`으로 만든 태그의 후속 이벤트에 의존하지 않고 기존 발행 workflow에서 직접 전송합니다. secret 누락과 전송 오류는 경고를 남기고 발행 검증을 계속합니다. 자동 재시도는 하지 않으며 응답 유실 시 채널 수신 여부를 먼저 확인합니다. 수동 태그 push와 GitHub Release 이벤트는 별도 알림으로 연결하지 않습니다.
