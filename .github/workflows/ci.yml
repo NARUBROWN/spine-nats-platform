@@ -1,0 +1,109 @@
+name: CI
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: '**/go.sum'
+      - name: Formatting, vet and module boundary
+        run: |
+          test -z "$(gofmt -l .)"
+          bash scripts/check-module-boundary.sh
+          for module in . e2e examples/worker; do
+            go -C "$module" vet ./...
+            go -C "$module" mod verify
+            go -C "$module" mod tidy
+          done
+          git diff --exit-code -- go.mod go.sum e2e/go.mod e2e/go.sum examples/worker/go.mod examples/worker/go.sum
+      - name: Unit and race tests
+        run: |
+          go test -race ./... -count=1 -timeout=2m
+          go -C examples/worker test ./...
+  live:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: '**/go.sum'
+      - name: Start JetStream
+        run: |
+          docker run -d --name spine-nats -p 127.0.0.1:4222:4222 nats:2.12.1-alpine -js
+          mkdir -p "$RUNNER_TEMP/nats-tls"
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=localhost \
+            -addext subjectAltName=DNS:localhost,IP:127.0.0.1 \
+            -keyout "$RUNNER_TEMP/nats-tls/server.key" -out "$RUNNER_TEMP/nats-tls/server.crt" 2>/dev/null
+          docker run -d --name spine-nats-tls -p 127.0.0.1:4223:4222 \
+            -v "$RUNNER_TEMP/nats-tls:/certs:ro" nats:2.12.1-alpine -js \
+            --tls --tlscert /certs/server.crt --tlskey /certs/server.key \
+            --user spine-test --pass local-only-nats
+      - name: Wait for JetStream
+        run: |
+          for attempt in $(seq 1 30); do
+            if docker logs spine-nats 2>&1 | grep -q 'Server is ready' && \
+               docker logs spine-nats-tls 2>&1 | grep -q 'Server is ready'; then exit 0; fi
+            sleep 1
+          done
+          docker logs spine-nats
+          exit 1
+      - name: Broker delivery and application pipeline
+        env:
+          SPINE_TEST_NATS_URL: nats://127.0.0.1:4222
+          SPINE_TEST_NATS_TLS_URL: tls://127.0.0.1:4223
+          SPINE_TEST_NATS_TLS_CA: ${{ runner.temp }}/nats-tls/server.crt
+          SPINE_TEST_NATS_USER: spine-test
+          SPINE_TEST_NATS_PASSWORD: local-only-nats
+        run: |
+          go test -race ./... -count=1 -timeout=2m
+          go -C e2e test -race ./... -count=1 -timeout=2m
+      - name: Server logs
+        if: failure()
+        run: |
+          docker logs spine-nats
+          docker logs spine-nats-tls
+  generated-project:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: platform
+      - uses: actions/checkout@v4
+        with:
+          repository: NARUBROWN/spine-cli
+          ref: 884aabf770ee7581488e91e5873248f06a991bd4
+          path: cli
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: platform/go.mod
+          cache-dependency-path: '**/go.sum'
+      - name: Start JetStream
+        run: |
+          docker run -d --name generated-nats -p 127.0.0.1:4222:4222 nats:2.12.1-alpine -js
+          for attempt in $(seq 1 30); do
+            if docker logs generated-nats 2>&1 | grep -q 'Server is ready'; then exit 0; fi
+            sleep 1
+          done
+          docker logs generated-nats
+          exit 1
+      - name: Generate and exercise HTTP and worker applications
+        env:
+          GOWORK: 'off'
+          SPINE_TEST_NATS_URL: nats://127.0.0.1:4222
+          SPINE_TEST_NATS_MODULE_DIR: ${{ github.workspace }}/platform
+        run: |
+          go -C cli test -race -json ./internal/cli -run '^TestGeneratedNATSAssemblyE2E$' -count=1 -timeout=10m > generated-project.jsonl
+          python3 platform/scripts/check-generated-e2e.py generated-project.jsonl
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: generated-project-evidence
+          path: generated-project.jsonl
