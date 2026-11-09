@@ -40,7 +40,7 @@ class NATSChannelTests(unittest.TestCase):
         self.assertEqual(github.writes, [{"ref": "refs/heads/rc", "sha": "a" * 40},
                                         {"ref": "refs/heads/main", "sha": "a" * 40}])
 
-    def test_channel_pins_include_application_and_worker_modules(self):
+    def test_channel_pins_preserve_public_contract_baselines(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             (root / ".github").mkdir()
@@ -52,8 +52,8 @@ class NATSChannelTests(unittest.TestCase):
                 (directory / "go.mod").write_text(f"module {module}\n\ngo 1.26.0\n\nrequire {release.CORE} v0.7.0-preview.2\n")
             pin_channel.pin(root, "rc", apply=True)
             release.check_module(POLICY, "rc", root)
-            child = root / "e2e/go.mod"
-            child.write_text(child.read_text().replace("v0.7.0-rc.1", "v0.7.0-preview.2"))
+            self.assertIn("v0.7.0-preview.2", (root / "e2e/go.mod").read_text())
+            (root / "e2e/go.mod").write_text("module example.com/child\n\ngo 1.26.0\n")
             with self.assertRaises(release.ReleaseError):
                 release.check_module(POLICY, "rc", root)
 
@@ -80,7 +80,10 @@ class NATSChannelTests(unittest.TestCase):
 
     def test_public_proxy_rejects_a_different_core_version(self):
         completed = subprocess.CompletedProcess([], 0, json.dumps({"Version": "v0.7.0-preview.1"}), "")
-        with tempfile.TemporaryDirectory() as temporary, patch.object(generated_core_proxy.subprocess, "run", return_value=completed):
+        baseline = json.dumps({"Require": [{"Path": release.CORE, "Version": "v0.7.0-preview.2"}]})
+        with tempfile.TemporaryDirectory() as temporary, \
+                patch.object(generated_core_proxy.subprocess, "check_output", return_value=baseline), \
+                patch.object(generated_core_proxy.subprocess, "run", return_value=completed):
             with self.assertRaises(release.ReleaseError):
                 generated_core_proxy.prepare(POLICY, "rc", Path(temporary), public=True)
 

@@ -40,17 +40,20 @@ def write_proxy(download, version, output):
 
 def prepare(policy, ref, output, public=False):
     validate_policy(policy)
-    version = policy["channels"][channel_for(ref)]["core_version"]
-    query = version if public else policy["ci_core"]
+    module = json.loads(subprocess.check_output(["go", "mod", "edit", "-json"], text=True,
+                                                 env=dict(os.environ, GOWORK="off")))
+    versions = {item["Path"]: item["Version"] for item in module.get("Require", [])}
+    version = versions.get(CORE)
+    if not version:
+        raise ReleaseError("Public contract dependency is missing from go.mod")
+    query = version
     result = subprocess.run(["go", "mod", "download", "-json", CORE + "@" + query],
                             env=dict(os.environ, GOWORK="off"), text=True, capture_output=True, check=True)
     download = json.loads(result.stdout)
-    if public and download["Version"] != version:
+    if download["Version"] != version:
         raise ReleaseError("공개 코어 버전이 검증 채널과 다릅니다")
     proxy = write_proxy(download, version, output)
     environment = {"GOPROXY": proxy + "," + os.environ.get("GOPROXY", "https://proxy.golang.org,direct")}
-    if not public:
-        environment["GONOSUMDB"] = ",".join(filter(None, (os.environ.get("GONOSUMDB"), CORE)))
     if target := os.environ.get("GITHUB_ENV"):
         with open(target, "a") as stream:
             for key, value in environment.items():
