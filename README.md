@@ -2,17 +2,22 @@
 
 Spine의 `spine.event-adapter/v1` 계약으로 NATS JetStream 이벤트를 발행하고 소비합니다. Kafka, RabbitMQ와 같은 `spine.WithEventAdapter`로 연결하며 코어에 NATS 의존성을 추가하지 않습니다.
 
-Go 1.26.0 이상, Spine `v0.7.0-preview.2`, `nats.go v1.55.0`을 사용합니다. 실제 서버 검증 버전은 NATS `2.12.1`입니다.
+## Preview 설치
 
-첫 출시 후보는 [`v0.1.0-preview.1`](release/notes/v0.1.0-preview.1.md)입니다. 태그 발행 전에는 `@preview`를 사용합니다.
-
-대상 정식 버전은 `v0.1.0`입니다. `preview → rc → main` 승격과 발행 조건은 [배포 절차](docs/releasing.md), 초기 도입은 [전환 안내](docs/migration/v0.1.0.md)를 따릅니다.
+개발 중인 기능을 시험하고 호환성 문제를 확인하는 채널입니다. 공개 태그는 [`v0.1.0-preview.2`](https://github.com/NARUBROWN/spine-nats-platform/tree/v0.1.0-preview.2)입니다. 이 태그의 `go.mod`는 Spine `v0.7.0-preview.2`와 Go 1.26.0 이상을 지정합니다.
 
 ```sh
-go get github.com/NARUBROWN/spine-nats-platform@preview
+go get github.com/NARUBROWN/spine-nats-platform@v0.1.0-preview.2-preview.2
 ```
 
-CLI의 `--event-platform nats` 생성에는 동적 플랫폼 조회 패치가 적용된 CLI가 필요합니다. 해당 CLI는 저장소 이름 규칙으로 이 모듈의 `@preview`를 조회하고 루트 `spine-platform.json`에서 설정과 생성자, 최소 Go 버전을 읽습니다. CLI를 사용하지 않는 앱은 아래처럼 factory를 직접 연결하세요.
+다른 채널은 [RC](https://github.com/NARUBROWN/spine-nats-platform/tree/rc) | [Stable](https://github.com/NARUBROWN/spine-nats-platform/tree/main)에서 확인하세요.
+
+
+Go 1.26.0 이상, Spine `v0.7.0-preview.2`, `nats.go v1.55.0`을 사용합니다. 실제 서버 검증 버전은 NATS `2.12.1`입니다.
+
+[전환 안내](docs/migration/v0.1.0.md)에서 초기 구성을, [릴리스 운영](docs/releasing.md)에서 발행 절차를 확인하세요.
+
+CLI에서 NATS를 선택하려면 설치한 버전의 `spine new --help`와 [플랫폼 안내](https://github.com/NARUBROWN/spine-cli/blob/preview/PLATFORMS.md)를 확인하세요. 아래 예제는 앱에 factory를 직접 등록합니다.
 
 ## 앱에 연결하기
 
