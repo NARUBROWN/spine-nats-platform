@@ -6,6 +6,8 @@ Go 1.26.0 이상, Spine `v0.7.0-preview.2`, `nats.go v1.55.0`을 사용합니다
 
 첫 출시 후보는 [`v0.1.0-preview.1`](release/notes/v0.1.0-preview.1.md)입니다. 태그 발행 전에는 `@preview`를 사용합니다.
 
+대상 정식 버전은 `v0.1.0`입니다. `preview → rc → main` 승격과 발행 조건은 [배포 절차](docs/releasing.md), 초기 도입은 [전환 안내](docs/migration/v0.1.0.md)를 따릅니다.
+
 ```sh
 go get github.com/NARUBROWN/spine-nats-platform@preview
 ```
@@ -107,3 +109,9 @@ CI의 `generated-project` 작업은 고정한 CLI 커밋으로 `spine new --even
 CLI에 등록하지 않은 다른 이벤트 이름과 설정형 validator를 메타데이터로 연결한 네 조합도 검사합니다. 다른 생성자와 설정 구조체, 간접 validator 의존성까지 포함하며 총 여덟 조합의 누락이나 skip을 실패로 처리합니다. 이 경로는 현재 checkout 검증이며 공개 모듈 설치 증거는 아닙니다.
 
 전달 보장과 pull consumer 배경은 [NATS JetStream 문서](https://docs.nats.io/learn/jetstream/)와 [공식 Go client](https://github.com/nats-io/nats.go/tree/v1.55.0/jetstream)를 참고하세요.
+
+## 릴리스와 공개 계약
+
+이 플랫폼은 자체 버전과 채널로 발행합니다. `go.mod`의 Spine 버전은 사용하는 공개 계약의 최소 의존성이며 코어 릴리스 채널과 별도로 관리합니다. CI와 공개 설치 검증은 이 모듈의 의존성으로 플랫폼 자체를 검사합니다. 새로운 코어와 기존 플랫폼 태그의 조합 검증은 코어 릴리스에서 수행합니다.
+
+CLI 생성 앱 조합 검사는 선택형으로 실행하며 플랫폼 자체 발행 성공을 결정하지 않습니다. JetStream을 사용하는 플랫폼 자체 검사는 필수로 유지합니다.
