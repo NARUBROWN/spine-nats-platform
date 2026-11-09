@@ -80,7 +80,7 @@ class NATSChannelTests(unittest.TestCase):
 
     def test_public_proxy_rejects_a_different_core_version(self):
         completed = subprocess.CompletedProcess([], 0, json.dumps({"Version": "v0.7.0-preview.1"}), "")
-        baseline = json.dumps({"Require": [{"Path": release.CORE, "Version": "v0.7.0-preview.2"}]})
+        baseline = release.CORE + " v0.7.0-preview.2 v0.7.0-preview.12"
         with tempfile.TemporaryDirectory() as temporary, \
                 patch.object(generated_core_proxy.subprocess, "check_output", return_value=baseline), \
                 patch.object(generated_core_proxy.subprocess, "run", return_value=completed):

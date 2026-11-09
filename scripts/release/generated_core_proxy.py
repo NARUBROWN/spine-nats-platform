@@ -4,6 +4,7 @@
 import argparse
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -40,12 +41,15 @@ def write_proxy(download, version, output):
 
 def prepare(policy, ref, output, public=False):
     validate_policy(policy)
-    module = json.loads(subprocess.check_output(["go", "mod", "edit", "-json"], text=True,
-                                                 env=dict(os.environ, GOWORK="off")))
-    versions = {item["Path"]: item["Version"] for item in module.get("Require", [])}
-    version = versions.get(CORE)
-    if not version:
-        raise ReleaseError("Public contract dependency is missing from go.mod")
+    # The CLI resolves its preview recipe dynamically. Use the newest published
+    # preview instead of the platform's minimum public-contract dependency.
+    listing = subprocess.check_output(["go", "list", "-m", "-versions", CORE], text=True,
+                                      env=dict(os.environ, GOWORK="off"))
+    previews = [item for item in listing.split()[1:]
+                if re.fullmatch(r"v\d+\.\d+\.\d+-preview\.\d+", item)]
+    if not previews:
+        raise ReleaseError("No published core preview version is available for the CLI integration test")
+    version = previews[-1]
     query = version
     result = subprocess.run(["go", "mod", "download", "-json", CORE + "@" + query],
                             env=dict(os.environ, GOWORK="off"), text=True, capture_output=True, check=True)

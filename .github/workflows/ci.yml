@@ -186,7 +186,7 @@ jobs:
           done
           docker logs generated-nats
           exit 1
-      - name: Select exact channel core for Preview CLI tests
+      - name: Select published Preview core for CLI tests
         working-directory: platform
         env:
           CHANNEL_REF: ${{ github.base_ref || github.ref_name }}
