@@ -4,6 +4,7 @@
 import argparse
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -40,17 +41,23 @@ def write_proxy(download, version, output):
 
 def prepare(policy, ref, output, public=False):
     validate_policy(policy)
-    version = policy["channels"][channel_for(ref)]["core_version"]
-    query = version if public else policy["ci_core"]
+    # The CLI resolves its preview recipe dynamically. Use the newest published
+    # preview instead of the platform's minimum public-contract dependency.
+    listing = subprocess.check_output(["go", "list", "-m", "-versions", CORE], text=True,
+                                      env=dict(os.environ, GOWORK="off"))
+    previews = [item for item in listing.split()[1:]
+                if re.fullmatch(r"v\d+\.\d+\.\d+-preview\.\d+", item)]
+    if not previews:
+        raise ReleaseError("No published core preview version is available for the CLI integration test")
+    version = previews[-1]
+    query = version
     result = subprocess.run(["go", "mod", "download", "-json", CORE + "@" + query],
                             env=dict(os.environ, GOWORK="off"), text=True, capture_output=True, check=True)
     download = json.loads(result.stdout)
-    if public and download["Version"] != version:
+    if download["Version"] != version:
         raise ReleaseError("공개 코어 버전이 검증 채널과 다릅니다")
     proxy = write_proxy(download, version, output)
     environment = {"GOPROXY": proxy + "," + os.environ.get("GOPROXY", "https://proxy.golang.org,direct")}
-    if not public:
-        environment["GONOSUMDB"] = ",".join(filter(None, (os.environ.get("GONOSUMDB"), CORE)))
     if target := os.environ.get("GITHUB_ENV"):
         with open(target, "a") as stream:
             for key, value in environment.items():

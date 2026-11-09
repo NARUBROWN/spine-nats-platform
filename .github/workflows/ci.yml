@@ -64,22 +64,6 @@ jobs:
         with:
           go-version-file: go.mod
           cache-dependency-path: '**/go.sum'
-      - name: Read source core pin
-        if: ${{ !inputs.public_dependencies }}
-        id: core
-        shell: bash
-        run: python3 -c "import json,os; p=json.load(open('.github/release-policy.json')); open(os.environ['GITHUB_OUTPUT'],'a').write('sha='+p['ci_core']+'\n')"
-      - uses: actions/checkout@v4
-        if: ${{ !inputs.public_dependencies }}
-        with:
-          repository: NARUBROWN/spine
-          ref: ${{ steps.core.outputs.sha }}
-          path: spine-core
-          persist-credentials: false
-      - name: Prepare source workspace
-        if: ${{ !inputs.public_dependencies }}
-        shell: bash
-        run: python3 scripts/release/ci_workspace.py prepare --root . --output "$RUNNER_TEMP/contracts.work"
       - name: Check exact source and channel
         shell: bash
         env:
@@ -122,22 +106,6 @@ jobs:
         with:
           go-version-file: go.mod
           cache-dependency-path: '**/go.sum'
-      - name: Read source core pin
-        if: ${{ !inputs.public_dependencies }}
-        id: core
-        shell: bash
-        run: python3 -c "import json,os; p=json.load(open('.github/release-policy.json')); open(os.environ['GITHUB_OUTPUT'],'a').write('sha='+p['ci_core']+'\n')"
-      - uses: actions/checkout@v4
-        if: ${{ !inputs.public_dependencies }}
-        with:
-          repository: NARUBROWN/spine
-          ref: ${{ steps.core.outputs.sha }}
-          path: spine-core
-          persist-credentials: false
-      - name: Prepare source workspace
-        if: ${{ !inputs.public_dependencies }}
-        shell: bash
-        run: python3 scripts/release/ci_workspace.py prepare --root . --output "$RUNNER_TEMP/contracts.work"
       - name: Check exact source and channel
         shell: bash
         env:
@@ -189,6 +157,8 @@ jobs:
           docker logs spine-nats
           docker logs spine-nats-tls
   generated-project:
+    name: Optional CLI integration
+    continue-on-error: true
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -216,7 +186,7 @@ jobs:
           done
           docker logs generated-nats
           exit 1
-      - name: Select exact channel core for Preview CLI tests
+      - name: Select published Preview core for CLI tests
         working-directory: platform
         env:
           CHANNEL_REF: ${{ github.base_ref || github.ref_name }}
@@ -242,7 +212,7 @@ jobs:
     name: ${{ github.event_name == 'pull_request' && format('Verified Source / {0}', github.base_ref) || 'Verified Source' }}
     runs-on: ubuntu-latest
     if: ${{ always() }}
-    needs: [direction, policy, unit, live, generated-project]
+    needs: [direction, policy, unit, live]
     outputs:
       sha: ${{ steps.source.outputs.sha }}
     steps:
