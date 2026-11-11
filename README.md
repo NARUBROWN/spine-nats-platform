@@ -4,10 +4,10 @@ Spine의 `spine.event-adapter/v1` 계약으로 NATS JetStream 이벤트를 발�
 
 ## Preview 설치
 
-개발 중인 기능을 시험하고 호환성 문제를 확인하는 채널입니다. 공개 태그는 [`v0.1.0-preview.2`](https://github.com/NARUBROWN/spine-nats-platform/tree/v0.1.0-preview.2)입니다. 이 태그의 `go.mod`는 Spine `v0.7.0-preview.2`와 Go 1.26.0 이상을 지정합니다.
+개발 중인 기능을 시험하고 호환성 문제를 확인하는 채널입니다. 공개 태그는 [`v0.1.0-preview.2`](https://github.com/NARUBROWN/spine-nats-platform/tree/v0.1.0-preview.2)입니다. 이 태그의 `go.mod`는 Spine `v0.7.0-preview.2`와 Go 1.26.0 이상을 지정합니다. 이 브랜치의 릴리스 정책 기준 버전은 `v0.1.0`입니다.
 
 ```sh
-go get github.com/NARUBROWN/spine-nats-platform@v0.1.0-preview.2-preview.2
+go get github.com/NARUBROWN/spine-nats-platform@v0.1.0-preview.2
 ```
 
 다른 채널은 [RC](https://github.com/NARUBROWN/spine-nats-platform/tree/rc) | [Stable](https://github.com/NARUBROWN/spine-nats-platform/tree/main)에서 확인하세요.
