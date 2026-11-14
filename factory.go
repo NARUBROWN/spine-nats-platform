@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -25,6 +26,11 @@ const (
 	FailureRequeue FailurePolicy = "requeue"
 )
 
+// DestinationSource는 앱이 발행할 논리 목적지 목록을 제공합니다.
+type DestinationSource interface {
+	PublishDestinations() []string
+}
+
 // Config는 미리 생성한 stream의 송수신과 durable consumer 정책을 설정합니다.
 // ConsumerPrefix가 같으면 같은 논리 topic의 reader들이 하나의 consumer를 공유합니다.
 type Config struct {
@@ -34,6 +40,7 @@ type Config struct {
 	Publish                bool
 	ConsumerPrefix         string
 	TopicPrefix            string
+	PublishDestinations    DestinationSource
 	FailurePolicy          FailurePolicy
 	RequeueDelay           time.Duration
 	AckWait                time.Duration
@@ -48,7 +55,10 @@ type Config struct {
 	OperationTimeout       time.Duration
 }
 
-type factory struct{ config Config }
+type factory struct {
+	config       Config
+	destinations map[string]string
+}
 
 // NewFactory는 설정을 복사하고 검사하며 네트워크에 연결하지 않습니다.
 func NewFactory(config Config) (event.Factory, error) {
@@ -113,7 +123,13 @@ func NewFactory(config Config) (event.Factory, error) {
 	if config.MaxDeliver == 0 {
 		config.MaxDeliver = -1
 	}
-	return &factory{config: config}, nil
+	destinations, err := resolveDestinations(config)
+	if err != nil {
+		return nil, err
+	}
+	// 초기화 후에는 호출자가 목록을 바꿔도 발행 경로에 영향을 주지 않습니다.
+	config.PublishDestinations = nil
+	return &factory{config: config, destinations: destinations}, nil
 }
 
 func validName(value string) bool {
@@ -190,7 +206,18 @@ func (f *factory) NewPublisher(ctx context.Context) (event.Publisher, error) {
 		nc.Close()
 		return nil, fmt.Errorf("prepare NATS stream: %w", err)
 	}
-	return &publisher{resource: newResource(nc.Close), js: js, config: f.config}, nil
+	for name, subject := range f.destinations {
+		stream, err := js.StreamNameBySubject(ctx, subject)
+		if err != nil {
+			nc.Close()
+			return nil, fmt.Errorf("prepare NATS publish destination %q (subject %q): %w", name, subject, err)
+		}
+		if stream != f.config.Stream {
+			nc.Close()
+			return nil, fmt.Errorf("%w: NATS publish subject %q belongs to stream %q, expected %q", event.ErrInvalidAdapter, subject, stream, f.config.Stream)
+		}
+	}
+	return &publisher{resource: newResource(nc.Close), js: js, config: f.config, destinations: f.destinations}, nil
 }
 
 // startupDialer는 TCP, TLS와 NATS handshake 도중에도 생성 취소를 반영합니다.
@@ -275,4 +302,40 @@ func (f *factory) connect(ctx context.Context) (*nats.Conn, jetstream.JetStream,
 		return nil, nil, err
 	}
 	return nc, js, nil
+}
+
+func resolveDestinations(config Config) (map[string]string, error) {
+	if !config.Publish {
+		return nil, nil
+	}
+	source := config.PublishDestinations
+	if source == nil || nilDestinationSource(source) {
+		return nil, fmt.Errorf("%w: set Config.PublishDestinations when publishing is enabled", event.ErrInvalidAdapter)
+	}
+	names := source.PublishDestinations()
+	if len(names) == 0 {
+		return nil, fmt.Errorf("%w: Config.PublishDestinations returned no destinations", event.ErrInvalidAdapter)
+	}
+	destinations := make(map[string]string, len(names))
+	for _, name := range names {
+		address := config.TopicPrefix + name
+		if !validSubject(name) || !validSubject(address) {
+			return nil, fmt.Errorf("%w: invalid nats destination %q", event.ErrInvalidAdapter, name)
+		}
+		if _, exists := destinations[name]; exists {
+			return nil, fmt.Errorf("%w: duplicate nats destination %q", event.ErrInvalidAdapter, name)
+		}
+		destinations[name] = address
+	}
+	return destinations, nil
+}
+
+func nilDestinationSource(source DestinationSource) bool {
+	value := reflect.ValueOf(source)
+	switch value.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return value.IsNil()
+	default:
+		return false
+	}
 }

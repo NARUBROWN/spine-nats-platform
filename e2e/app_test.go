@@ -122,7 +122,7 @@ func TestHTTPPublishWorkerRedeliveryAndResult(t *testing.T) {
 	defer js.DeleteStream(context.Background(), stream)
 	factory := func(consume, publish bool, prefix string) event.Factory {
 		f, err := natsplatform.NewFactory(natsplatform.Config{
-			URLs: []string{address}, Stream: stream, Consume: consume, Publish: publish,
+			URLs: []string{address}, Stream: stream, Consume: consume, Publish: publish, PublishDestinations: testDestinations{"order.created", "order.completed"},
 			ConsumerPrefix: prefix, TopicPrefix: stream + ".", AllowInsecureTransport: true,
 			FailurePolicy: natsplatform.FailureRequeue, RequeueDelay: 20 * time.Millisecond,
 		})
@@ -212,3 +212,7 @@ func TestHTTPPublishWorkerRedeliveryAndResult(t *testing.T) {
 		t.Fatalf("handler calls: %d", calls)
 	}
 }
+
+type testDestinations []string
+
+func (d testDestinations) PublishDestinations() []string { return d }

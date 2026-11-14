@@ -18,8 +18,9 @@ const (
 
 type publisher struct {
 	*resource
-	js     jetstream.JetStream
-	config Config
+	js           jetstream.JetStream
+	config       Config
+	destinations map[string]string
 }
 
 var _ event.Publisher = (*publisher)(nil)
@@ -29,15 +30,16 @@ func (p *publisher) Publish(ctx context.Context, message event.Message) error {
 		return err
 	}
 	defer p.active.Done()
-	if !validSubject(message.EventName) {
-		return fmt.Errorf("%w: event name must be a literal subject", event.ErrInvalidAdapter)
+	subject, registered := p.destinations[message.EventName]
+	if !registered {
+		return fmt.Errorf("%w: NATS publish destination %q is not registered", event.ErrInvalidAdapter, message.EventName)
 	}
 	ctx, cancel := context.WithTimeout(ctx, p.config.OperationTimeout)
 	defer cancel()
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	msg := &nats.Msg{Subject: p.config.TopicPrefix + message.EventName, Data: message.Payload, Header: nats.Header{}}
+	msg := &nats.Msg{Subject: subject, Data: message.Payload, Header: nats.Header{}}
 	if !message.OccurredAt.IsZero() {
 		msg.Header.Set(occurredHeader, message.OccurredAt.Format(time.RFC3339Nano))
 	}
