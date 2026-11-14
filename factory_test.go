@@ -12,7 +12,7 @@ import (
 )
 
 func testConfig() Config {
-	return Config{URLs: []string{"nats://127.0.0.1:4222"}, Stream: "EVENTS", ConsumerPrefix: "orders", Consume: true, Publish: true, AllowInsecureTransport: true}
+	return Config{URLs: []string{"nats://127.0.0.1:4222"}, Stream: "EVENTS", ConsumerPrefix: "orders", Consume: true, Publish: true, PublishDestinations: testDestinations{"order.created"}, AllowInsecureTransport: true}
 }
 
 func TestFactoryValidation(t *testing.T) {
@@ -27,6 +27,8 @@ func TestFactoryValidation(t *testing.T) {
 		{"URL path", func(c *Config) { c.URLs[0] += "/path" }},
 		{"no stream", func(c *Config) { c.Stream = "" }},
 		{"bad stream", func(c *Config) { c.Stream = "events.*" }},
+		{"missing destinations", func(c *Config) { c.PublishDestinations = nil }},
+		{"duplicate destinations", func(c *Config) { c.PublishDestinations = testDestinations{"order.created", "order.created"} }},
 		{"no roles", func(c *Config) { c.Consume = false; c.Publish = false }},
 		{"no consumer prefix", func(c *Config) { c.ConsumerPrefix = "" }},
 		{"bad consumer prefix", func(c *Config) { c.ConsumerPrefix = "orders.foo" }},
@@ -153,3 +155,7 @@ func TestCloseWaitCanBeRetried(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+type testDestinations []string
+
+func (d testDestinations) PublishDestinations() []string { return d }

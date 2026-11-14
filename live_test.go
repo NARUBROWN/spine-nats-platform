@@ -364,7 +364,7 @@ func TestLiveMissingStreamAndWrongPublicationTarget(t *testing.T) {
 	config, _ := liveConfig(t)
 	f := liveFactory(t, config)
 	p := livePublisher(t, f)
-	if err := p.Publish(t.Context(), event.Message{EventName: "order.*"}); !errors.Is(err, event.ErrInvalidAdapter) {
+	if err := p.Publish(t.Context(), event.Message{EventName: "order.unregistered"}); !errors.Is(err, event.ErrInvalidAdapter) {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(t.Context())
@@ -374,7 +374,7 @@ func TestLiveMissingStreamAndWrongPublicationTarget(t *testing.T) {
 	}
 	other := config
 	other.TopicPrefix = "elsewhere."
-	if err := livePublisher(t, liveFactory(t, other)).Publish(t.Context(), event.Message{EventName: "order.created"}); err == nil {
+	if p, err := liveFactory(t, other).NewPublisher(t.Context()); err == nil || p != nil {
 		t.Fatal("publication to missing stream subject succeeded")
 	}
 	config.Stream += "_MISSING"
@@ -416,7 +416,7 @@ func TestLiveTLSAndAuthentication(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer js.DeleteStream(context.Background(), stream)
-	config := Config{URLs: []string{address}, Stream: stream, TopicPrefix: stream + ".", ConsumerPrefix: "tls", Consume: true, Publish: true, TLS: tlsConfig, User: user, Password: password}
+	config := Config{URLs: []string{address}, Stream: stream, TopicPrefix: stream + ".", ConsumerPrefix: "tls", Consume: true, Publish: true, PublishDestinations: testDestinations{"order.created"}, TLS: tlsConfig, User: user, Password: password}
 	f := liveFactory(t, config)
 	r, p := liveReader(t, f, "order.created"), livePublisher(t, f)
 	if err := p.Publish(t.Context(), event.Message{EventName: "order.created", Payload: []byte("authenticated")}); err != nil {

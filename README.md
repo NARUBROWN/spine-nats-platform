@@ -35,6 +35,7 @@ factory, err := natsplatform.NewFactory(natsplatform.Config{
     ConsumerPrefix: "orders",
     Consume:        true,
     Publish:        true,
+    PublishDestinations: destinations.Catalog{},
     FailurePolicy:  natsplatform.FailureRequeue,
 })
 if err != nil {
@@ -43,7 +44,22 @@ if err != nil {
 app := spine.New(spine.WithEventAdapter("nats", factory))
 ```
 
-HTTP 앱은 `spine.New(echoplatform.Option(), spine.WithEventAdapter("nats", factory))`로 구성합니다. HTTP가 없는 worker는 HTTP 플랫폼을 선택하지 않습니다. 도메인 이벤트는 기존 `publish.Event(ctx, value)`로 발행하고, 소비자는 `app.Consumers().Register("order.created", (*OrderConsumer).Handle)`로 등록합니다.
+HTTP 앱은 `spine.New(echoplatform.Option(), spine.WithEventAdapter("nats", factory))`로 구성합니다. HTTP가 없는 worker는 HTTP 플랫폼을 선택하지 않습니다. 새 발행 API를 제공하는 Spine에서는 `publish.Event(ctx, destinations.OrderCreated, publish.Fields{"id": orderID})`로 발행하고, 소비자는 `app.Consumers().Register("order.created", (*OrderConsumer).Handle)`로 등록합니다.
+
+발행을 켜면 `PublishDestinations() []string`을 구현한 값을 설정에 넣습니다. 어댑터는 prefix를 적용한 각 subject가 지정된 stream에 속하는지 발행자 초기화에서 확인합니다.
+
+```go
+// destinations.go
+package destinations
+
+const OrderCreated = "orders.created"
+
+type Catalog struct{}
+
+func (Catalog) PublishDestinations() []string {
+    return []string{OrderCreated}
+}
+```
 
 ## 설정
 
@@ -52,6 +68,7 @@ HTTP 앱은 `spine.New(echoplatform.Option(), spine.WithEventAdapter("nats", fac
 | `URLs` | 필수 | `nats://` 또는 `tls://` 주소 목록. URL의 자격 증명, 경로, 쿼리는 허용하지 않음 |
 | `Stream` | 필수 | 미리 생성한 stream 이름. 점, 공백, 제어 문자, wildcard와 경로 구분자는 허용하지 않음 |
 | `Consume`, `Publish` | `false` | 하나 이상의 역할 필요 |
+| `PublishDestinations` | 발행 시 필수 | 논리 목적지 목록 제공 |
 | `ConsumerPrefix` | 소비 시 필수 | consumer의 서비스 또는 그룹 이름. 이름 제약은 `Stream`과 같음 |
 | `TopicPrefix` | 없음 | 예: `prod.`. 비어 있지 않으면 점으로 끝나는 literal subject 접두사 |
 | `FailurePolicy` | `FailureReject` | `FailureReject`는 TERM으로 재전달 중단, `FailureRequeue`는 NAK로 재전달 요청 |
