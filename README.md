@@ -1,27 +1,28 @@
+English | [Korean](README.ko.md)
+
 # spine-nats-platform
 
-Spine의 `spine.event-adapter/v1` 계약으로 NATS JetStream 이벤트를 발행하고 소비합니다. Kafka, RabbitMQ와 같은 `spine.WithEventAdapter`로 연결하며 코어에 NATS 의존성을 추가하지 않습니다.
+Publish and consume NATS JetStream events through Spine's `spine.event-adapter/v1` contract. Connect with `spine.WithEventAdapter`, as with Kafka and RabbitMQ, without adding NATS dependencies to the core.
 
-## Preview 설치
+## Preview installation
 
-개발 중인 기능을 시험하고 호환성 문제를 확인하는 채널입니다. 공개 태그는 [`v0.1.0-preview.2`](https://github.com/NARUBROWN/spine-nats-platform/tree/v0.1.0-preview.2)입니다. 이 태그의 `go.mod`는 Spine `v0.7.0-preview.2`와 Go 1.26.0 이상을 지정합니다. 이 브랜치의 릴리스 정책 기준 버전은 `v0.1.0`입니다.
+Use this channel to try features under development and check compatibility. The published tag is [`v0.1.0-preview.2`](https://github.com/NARUBROWN/spine-nats-platform/tree/v0.1.0-preview.2). Its `go.mod` specifies Spine `v0.7.0-preview.2` and Go 1.26.0 or later. The release policy on this branch targets `v0.1.0`.
 
 ```sh
 go get github.com/NARUBROWN/spine-nats-platform@v0.1.0-preview.2
 ```
 
-다른 채널은 [RC](https://github.com/NARUBROWN/spine-nats-platform/tree/rc) | [Stable](https://github.com/NARUBROWN/spine-nats-platform/tree/main)에서 확인하세요.
+Other channels: [RC](https://github.com/NARUBROWN/spine-nats-platform/tree/rc) | [Stable](https://github.com/NARUBROWN/spine-nats-platform/tree/main).
 
+Uses Go 1.26.0 or later, Spine `v0.7.0-preview.2`, and `nats.go v1.55.0`. Real server tests use NATS `2.12.1`.
 
-Go 1.26.0 이상, Spine `v0.7.0-preview.2`, `nats.go v1.55.0`을 사용합니다. 실제 서버 검증 버전은 NATS `2.12.1`입니다.
+See the [migration guide](docs/migration/v0.1.0.md) for initial setup and [release operations](docs/releasing.md) for publication procedures.
 
-[전환 안내](docs/migration/v0.1.0.md)에서 초기 구성을, [릴리스 운영](docs/releasing.md)에서 발행 절차를 확인하세요.
+To select NATS in the CLI, check your installed version's `spine new --help` and the [platform guide](https://github.com/NARUBROWN/spine-cli/blob/preview/PLATFORMS.md). The example below registers the factory directly.
 
-CLI에서 NATS를 선택하려면 설치한 버전의 `spine new --help`와 [플랫폼 안내](https://github.com/NARUBROWN/spine-cli/blob/preview/PLATFORMS.md)를 확인하세요. 아래 예제는 앱에 factory를 직접 등록합니다.
+## Application setup
 
-## 앱에 연결하기
-
-JetStream을 활성화하고 `order.created`를 포함하는 `EVENTS` stream을 먼저 생성하세요. stream의 보존 기간, 저장 방식, 복제 수와 용량은 운영자가 설정합니다. 플랫폼은 stream을 생성하거나 기존 consumer 설정을 덮어쓰지 않습니다.
+Enable JetStream and create an `EVENTS` stream containing `order.created` first. Operators configure retention, storage, replication, and capacity. The platform neither creates streams nor overwrites existing consumer configuration.
 
 ```go
 import (
@@ -44,9 +45,9 @@ if err != nil {
 app := spine.New(spine.WithEventAdapter("nats", factory))
 ```
 
-HTTP 앱은 `spine.New(echoplatform.Option(), spine.WithEventAdapter("nats", factory))`로 구성합니다. HTTP가 없는 worker는 HTTP 플랫폼을 선택하지 않습니다. 새 발행 API를 제공하는 Spine에서는 `publish.Event(ctx, destinations.OrderCreated, publish.Fields{"id": orderID})`로 발행하고, 소비자는 `app.Consumers().Register("order.created", (*OrderConsumer).Handle)`로 등록합니다.
+For HTTP applications, use `spine.New(echoplatform.Option(), spine.WithEventAdapter("nats", factory))`. Workers without HTTP do not select an HTTP platform. With a Spine version providing the new publishing API, publish with `publish.Event(ctx, destinations.OrderCreated, publish.Fields{"id": orderID})` and register consumers with `app.Consumers().Register("order.created", (*OrderConsumer).Handle)`.
 
-발행을 켜면 `PublishDestinations() []string`을 구현한 값을 설정에 넣습니다. 어댑터는 prefix를 적용한 각 subject가 지정된 stream에 속하는지 발행자 초기화에서 확인합니다.
+When enabling publishing, configure a value implementing `PublishDestinations() []string`. During publisher initialization, the adapter checks that each prefixed subject belongs to the configured stream.
 
 ```go
 // destinations.go
@@ -61,50 +62,50 @@ func (Catalog) PublishDestinations() []string {
 }
 ```
 
-## 설정
+## Configuration
 
-| 필드 | 기본값 | 동작과 제약 |
+| Field | Default | Behavior and constraints |
 | --- | --- | --- |
-| `URLs` | 필수 | `nats://` 또는 `tls://` 주소 목록. URL의 자격 증명, 경로, 쿼리는 허용하지 않음 |
-| `Stream` | 필수 | 미리 생성한 stream 이름. 점, 공백, 제어 문자, wildcard와 경로 구분자는 허용하지 않음 |
-| `Consume`, `Publish` | `false` | 하나 이상의 역할 필요 |
-| `PublishDestinations` | 발행 시 필수 | 논리 목적지 목록 제공 |
-| `ConsumerPrefix` | 소비 시 필수 | consumer의 서비스 또는 그룹 이름. 이름 제약은 `Stream`과 같음 |
-| `TopicPrefix` | 없음 | 예: `prod.`. 비어 있지 않으면 점으로 끝나는 literal subject 접두사 |
-| `FailurePolicy` | `FailureReject` | `FailureReject`는 TERM으로 재전달 중단, `FailureRequeue`는 NAK로 재전달 요청 |
-| `RequeueDelay` | `0` | requeue 대기 시간. 0이면 즉시 요청 |
-| `AckWait` | `30s` | ACK가 없을 때 서버가 재전달할 때까지 기다리는 시간 |
-| `MaxDeliver` | `-1` | 0도 무제한으로 해석. 양수는 최초 전달을 포함한 서버의 최대 전달 횟수 |
-| `User`, `Password` | 없음 | 사용자 인증. 비밀번호만 설정할 수 없음 |
-| `Token` | 없음 | 토큰 인증 |
-| `CredentialsFile` | 없음 | NATS credentials 파일. 인증 방식은 하나만 선택 |
-| `TLS` | TLS 1.2 이상 | `tls.Config` 복사본. 기본 인증서 검증 유지 |
-| `AllowInsecureTransport` | `false` | 로컬 평문 연결에만 `true` 사용. TLS와 함께 사용할 수 없음 |
-| `StartupTimeout` | `10s` | 연결과 readiness 제한 시간 |
-| `OperationTimeout` | `5s` | 발행, ACK와 NACK 제한 시간 |
+| `URLs` | Required | List of `nats://` or `tls://` addresses; credentials, paths, and queries in URLs are rejected |
+| `Stream` | Required | Existing stream name; dots, whitespace, control characters, wildcards, and path separators are rejected |
+| `Consume`, `Publish` | `false` | Enable at least one role |
+| `PublishDestinations` | Required for publishing | Provides logical destination names |
+| `ConsumerPrefix` | Required for consuming | Consumer service or group name; the same naming constraints as `Stream` apply |
+| `TopicPrefix` | None | Literal subject prefix, such as `prod.`; a nonempty prefix must end with a dot |
+| `FailurePolicy` | `FailureReject` | `FailureReject` sends TERM to stop redelivery; `FailureRequeue` sends NAK to request redelivery |
+| `RequeueDelay` | `0` | Requeue delay; zero requests immediate redelivery |
+| `AckWait` | `30s` | Server wait before redelivery when no ACK arrives |
+| `MaxDeliver` | `-1` | Zero also means unlimited; positive values limit total server deliveries, including the first |
+| `User`, `Password` | None | User authentication; a password cannot be configured alone |
+| `Token` | None | Token authentication |
+| `CredentialsFile` | None | NATS credentials file; select only one authentication method |
+| `TLS` | TLS 1.2 or later | Copy of `tls.Config`, retaining default certificate verification |
+| `AllowInsecureTransport` | `false` | Set true only for local plaintext connections; cannot be combined with TLS |
+| `StartupTimeout` | `10s` | Connection and readiness deadline |
+| `OperationTimeout` | `5s` | Publishing, ACK, and NACK deadline |
 
-음수 시간은 거부합니다. 구독 topic과 이벤트 이름은 비어 있지 않은 literal NATS subject여야 하며 `*`, `>`, 빈 토큰과 공백을 허용하지 않습니다. `TopicPrefix: "prod."`이면 논리 이름 `order.created`를 `prod.order.created`로 매핑합니다. 소비자 등록에서 접두사를 반복하지 마세요.
+Negative durations are rejected. Subscription topics and event names must be nonempty literal NATS subjects; `*`, `>`, empty tokens, and whitespace are rejected. `TopicPrefix: "prod."` maps logical `order.created` to `prod.order.created`. Do not repeat the prefix in consumer registration.
 
-## 전달과 종료
+## Delivery and shutdown
 
-- 발행은 지정한 stream의 저장 확인을 기다립니다. 성공 ACK는 `DoubleAck`로 서버 확인을 기다립니다. NACK는 TERM 또는 NAK를 보낸 뒤 연결의 flush를 기다립니다.
-- consumer 이름은 `ConsumerPrefix`와 매핑한 subject의 SHA-256 앞 128비트로 정합니다. 같은 stream, prefix와 topic을 쓰는 reader는 durable consumer를 공유합니다. 다른 prefix는 독립적인 소비 위치를 가집니다.
-- `NewReader`는 consumer를 준비하되 메시지를 가져오지 않습니다. 첫 `Read`에서 pull을 시작하며 한 번에 한 메시지를 요청합니다. `MaxAckPending`은 consumer 전체에서 1입니다. handler와 후처리 뒤 ACK 또는 NACK를 한 번 호출하세요.
-- `Close`는 새 작업을 막고 진행 중인 작업을 기다립니다. reader 종료는 대기 중인 `Read`를 해제합니다. 종료 대기 context가 만료돼도 정리는 계속되며 다음 `Close`에서 다시 기다릴 수 있습니다. durable consumer와 stream은 삭제하지 않습니다.
-- native 자동 재연결은 끕니다. 연결 실패 시 Spine의 공통 재생성 정책을 사용합니다. 실패한 발행 메시지를 자동으로 다시 보내지 않습니다.
-- `Spine-Occurred-At`과 JSON 형식의 `Spine-Metadata` 헤더에 시간과 메타데이터를 넣으며 payload를 재직렬화하지 않습니다. 외부 생산자가 잘못된 헤더를 보내면 해당 헤더를 무시합니다. 시간 헤더가 없거나 잘못되면 서버 저장 시간을 사용합니다. 수신 이벤트 이름은 등록된 논리 topic으로 고정합니다.
+- Publishing waits for the selected stream's storage acknowledgement. Successful processing uses `DoubleAck` to wait for server confirmation. NACK sends TERM or NAK and waits for the connection to flush.
+- Consumer names combine `ConsumerPrefix` with the first 128 bits of the mapped subject's SHA-256. Readers using the same stream, prefix, and topic share a durable consumer. Different prefixes have independent positions.
+- `NewReader` prepares a consumer without fetching messages. The first `Read` starts pulling, one message at a time. `MaxAckPending` is 1 across the consumer. Call ACK or NACK once after the handler and post-processing.
+- `Close` blocks new work and waits for in-flight operations. Closing a reader releases a pending `Read`. Cleanup continues after a wait context expires; a later `Close` can wait again. Durable consumers and streams are not deleted.
+- Native automatic reconnection is disabled. Spine's shared recreation policy handles connection failures. Failed publish messages are not automatically resent.
+- Time and metadata use the `Spine-Occurred-At` and JSON `Spine-Metadata` headers; payloads are not serialized again. Malformed headers from external producers are ignored. Missing or invalid timestamps fall back to server storage time. Received event names use the registered logical topic.
 
-이 구현은 **JetStream 전용**입니다. Core NATS pub/sub, request/reply, wildcard 소비와 자동 DLQ 구성은 포함하지 않습니다. 메시지 순서는 병렬 reader와 재전달로 달라질 수 있습니다. ACK가 유실되거나 처리가 `AckWait`을 넘으면 중복 실행될 수 있으므로 소비자를 멱등하게 작성하세요. 자동 `InProgress` heartbeat는 보내지 않습니다. `MaxDeliver`에 도달하거나 TERM을 보내도 자동으로 DLQ에 이동하지 않으며, 메시지 보존은 stream 정책을 따릅니다. DB commit과 브로커 발행의 원자성, exactly-once 업무 처리도 보장하지 않습니다.
+This implementation supports **JetStream only**. It does not implement Core NATS pub/sub, request/reply, wildcard consumption, or automatic DLQ setup. Parallel readers and redelivery can change ordering. Lost ACKs or processing beyond `AckWait` can cause duplicate execution; make consumers idempotent. No automatic `InProgress` heartbeat is sent. Reaching `MaxDeliver` or sending TERM does not automatically move a message to a DLQ; retention follows stream policy. Database commits and broker publishing are not atomic, and exactly-once business processing is not guaranteed.
 
-## 로컬 예제와 검증
+## Local example and verification
 
-저장소 루트에서 실행합니다. `nats` CLI는 [공식 설치 안내](https://github.com/nats-io/natscli#installation)를 따르세요.
+Run from the repository root. Install the `nats` CLI using its [official instructions](https://github.com/nats-io/natscli#installation).
 
 ```sh
 docker run --rm --name spine-nats -p 127.0.0.1:4222:4222 nats:2.12.1-alpine -js
 ```
 
-다른 터미널에서 stream을 만들고 worker를 시작합니다.
+In another terminal, create the stream and start the worker.
 
 ```sh
 nats --server nats://127.0.0.1:4222 stream add EVENTS \
@@ -113,7 +114,7 @@ NATS_URL=nats://127.0.0.1:4222 NATS_STREAM=EVENTS NATS_ALLOW_INSECURE=true \
   go -C examples/worker run .
 ```
 
-`nats --server nats://127.0.0.1:4222 pub order.created '{"id":42}'`를 보내면 worker가 `주문 수신: id=42`를 출력합니다. 종료 시 `Ctrl+C`를 사용합니다.
+Send `nats --server nats://127.0.0.1:4222 pub order.created '{"id":42}'`. The worker prints its order receipt message with `id=42`. Stop it with `Ctrl+C`.
 
 ```sh
 go test -race ./... -count=1
@@ -122,20 +123,20 @@ SPINE_TEST_NATS_URL=nats://127.0.0.1:4222 go test -race ./... -count=1
 SPINE_TEST_NATS_URL=nats://127.0.0.1:4222 go -C e2e test -race ./... -count=1
 ```
 
-환경 변수가 없으면 실제 서버 검사는 건너뜁니다. TLS 검사는 `SPINE_TEST_NATS_TLS_URL`, `SPINE_TEST_NATS_TLS_CA`, `SPINE_TEST_NATS_USER`, `SPINE_TEST_NATS_PASSWORD`로 별도의 테스트 서버를 지정합니다. CI 구성에는 로컬 CA와 사용자 인증 서버를 포함했으며 인증 실패와 신뢰하지 않는 인증서도 검사합니다.
+Real server checks are skipped when environment variables are absent. Configure a separate TLS test server with `SPINE_TEST_NATS_TLS_URL`, `SPINE_TEST_NATS_TLS_CA`, `SPINE_TEST_NATS_USER`, and `SPINE_TEST_NATS_PASSWORD`. CI includes a local CA and a server with user authentication, and tests authentication failure and untrusted certificates.
 
-E2E는 HTTP 요청, 도메인 이벤트 발행, worker 실패, 재전달, 결과 이벤트와 정상 종료를 검사합니다. 단일 로컬 서버 검증이며 클러스터 장애 복구, 실제 운영 인증서와 계정, 처리량과 대용량 성능 검증은 포함하지 않습니다.
+E2E covers HTTP requests, domain event publishing, worker failure, redelivery, result events, and graceful shutdown. It uses one local server; cluster recovery, production certificates and accounts, throughput, and large-payload performance are outside its scope.
 
-CI의 `generated-project` 작업은 고정한 CLI 커밋으로 `spine new --event-platform events:nats`를 실행합니다. 이 저장소의 소스를 별도 모듈 프록시와 캐시에 넣으며, 생성한 `go.mod`에 `replace`를 추가하지 않습니다. 두 레이아웃에서 HTTP 앱과 worker 네 조합의 정적 계약, 부분 runtime probe, 실제 NATS 전달, ACK와 잘못된 DTO의 reject, 정상 종료 및 소스를 보존하는 update를 검사합니다.
+CI's `generated-project` job runs `spine new --event-platform events:nats` with a pinned CLI commit. It exposes this checkout through a separate module proxy and cache, without adding `replace` to the generated `go.mod`. Across two layouts, four HTTP application and worker combinations check static contracts, partial runtime probes, actual NATS delivery, ACK and invalid DTO rejection, graceful shutdown, and source-preserving updates.
 
-CLI에 등록하지 않은 다른 이벤트 이름과 설정형 validator를 메타데이터로 연결한 네 조합도 검사합니다. 다른 생성자와 설정 구조체, 간접 validator 의존성까지 포함하며 총 여덟 조합의 누락이나 skip을 실패로 처리합니다. 이 경로는 현재 checkout 검증이며 공개 모듈 설치 증거는 아닙니다.
+Four additional combinations connect event names not registered in the CLI and configurable validators through metadata. These include different constructors and configuration structs, and indirect validator dependencies. Missing or skipped checks in any of the eight combinations fail validation. This verifies the current checkout, rather than installation of public modules.
 
-전달 보장과 pull consumer 배경은 [NATS JetStream 문서](https://docs.nats.io/learn/jetstream/)와 [공식 Go client](https://github.com/nats-io/nats.go/tree/v1.55.0/jetstream)를 참고하세요.
+See [NATS JetStream documentation](https://docs.nats.io/learn/jetstream/) and the [official Go client](https://github.com/nats-io/nats.go/tree/v1.55.0/jetstream) for delivery guarantees and pull consumers.
 
-## 릴리스와 공개 계약
+## Releases and public contracts
 
-이 플랫폼은 자체 버전과 채널로 발행합니다. `go.mod`의 Spine 버전은 사용하는 공개 계약의 최소 의존성이며 코어 릴리스 채널과 별도로 관리합니다. CI와 공개 설치 검증은 이 모듈의 의존성으로 플랫폼 자체를 검사합니다. 새로운 코어와 기존 플랫폼 태그의 조합 검증은 코어 릴리스에서 수행합니다.
+This platform publishes its own versions and release channels. The Spine version in `go.mod` is the minimum dependency for its public contracts and is managed separately from the core release channel. CI and public installation checks verify the platform against this module's dependencies. Core releases verify combinations of a new core and existing platform tags.
 
-CLI 생성 앱 조합 검사는 선택형으로 실행하며 플랫폼 자체 발행 성공을 결정하지 않습니다. JetStream을 사용하는 플랫폼 자체 검사는 필수로 유지합니다.
+CLI-generated application combination checks are optional and do not determine whether this platform can publish. The platform's own JetStream checks remain required.
 
-다음 발행 대상은 `v0.2.0`입니다.
+The next publication target is `v0.2.0`.
